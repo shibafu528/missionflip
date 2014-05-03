@@ -1,6 +1,7 @@
 #include <gtk/gtk.h>
 
 GList *filelist = NULL;
+GdkPixbuf *current;
 GtkWidget *window;
 
 void search_images(GList **list, gchar *dirname) {
@@ -34,29 +35,67 @@ static void set_window_title() {
     g_free(title);
 }
 
-static void next_image(GtkWidget *image) {
+static void load_image(GtkWidget *draw, const gchar *path) {
+    if (current != NULL) {
+        g_object_unref(current);
+    }
+    current = gdk_pixbuf_new_from_file(path, NULL);
+    gtk_widget_queue_draw(draw);
+    set_window_title();
+}
+
+static void next_image(GtkWidget *draw) {
     if (g_list_next(filelist) != NULL) {
         filelist = g_list_next(filelist);
     }
     else {
         filelist = g_list_first(filelist);
     }
-    gtk_image_set_from_file(GTK_IMAGE(image), filelist->data);
-    set_window_title();
+    load_image(draw, filelist->data);
 }
 
-static void prev_image(GtkWidget *image) {
+static void prev_image(GtkWidget *draw) {
     if (g_list_previous(filelist) != NULL) {
         filelist = g_list_previous(filelist);
     }
     else {
         filelist = g_list_last(filelist);
     }
-    gtk_image_set_from_file(GTK_IMAGE(image), filelist->data);
-    set_window_title();
+    load_image(draw, filelist->data);
 }
 
-static void cb_image_clicked(GtkWidget *event_box, GdkEventButton *event, gpointer data) {
+static gint cb_expose(GtkWidget *widget, GdkEventExpose *event, gpointer data) {
+    if (current != NULL) {
+        int w, h;
+        float s;
+        GdkPixbuf *scaled;
+        w = gdk_pixbuf_get_width(current);
+        h = gdk_pixbuf_get_height(current);
+
+        if (event->area.width > event->area.height) {
+            s = (float)event->area.height / h;
+        }
+        else {
+            s = (float)event->area.width / w;
+        }
+
+        w = w * s;
+        h = h * s;
+
+        scaled = gdk_pixbuf_scale_simple(current, w, h, GDK_INTERP_BILINEAR);
+        gdk_draw_pixbuf(widget->window, widget->style->fg_gc[GTK_STATE_NORMAL], scaled,
+                        0, 0, 
+                        event->area.x+(event->area.width/2-w/2), 
+                        event->area.y+(event->area.height/2-h/2),
+                        w, h,
+                        GDK_RGB_DITHER_NORMAL, event->area.x, event->area.y);
+    
+        g_object_unref(scaled);
+    }
+    return TRUE;
+}
+
+static void cb_clicked(GtkWidget *widget, GdkEventButton *event, gpointer data) {
     switch (event->button) {
     case 1: /* Left Click */
         if (filelist == NULL) {
@@ -81,12 +120,12 @@ static void cb_image_clicked(GtkWidget *event_box, GdkEventButton *event, gpoint
             gtk_widget_destroy(dialog);
         }
         else {
-            next_image(GTK_WIDGET(data));
+            next_image(widget);
         }
         break;
     case 2: /* Middle Click */
         if (filelist != NULL) {
-            prev_image(GTK_WIDGET(data));
+            prev_image(widget);
         }
         break;
     case 3: /* Right Click */
@@ -101,17 +140,18 @@ static void make_and_show_mainwindow() {
     g_signal_connect(window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
     gtk_widget_set_size_request(window, 640, 480);
     {
-        GtkWidget *event_box, *image;
+        GtkWidget *canvas;
         
-        event_box = gtk_event_box_new();
-        gtk_container_add(GTK_CONTAINER(window), event_box);
-        
-        image = gtk_image_new();
-        gtk_container_add(GTK_CONTAINER(event_box), image);
+        canvas = gtk_drawing_area_new();
+        gtk_widget_set_size_request(canvas, 640, 480);
+        gtk_container_add(GTK_CONTAINER(window), canvas);
 
-        gtk_widget_set_events(event_box, GDK_BUTTON_RELEASE_MASK);
-        g_signal_connect(G_OBJECT(event_box), "button_release_event", 
-                         G_CALLBACK(cb_image_clicked), image);
+        g_signal_connect(G_OBJECT(canvas), "expose_event",
+                         G_CALLBACK(cb_expose), NULL);
+
+        g_signal_connect(G_OBJECT(window), "button_release_event", 
+                         G_CALLBACK(cb_clicked), canvas);        
+        gtk_widget_add_events(window, GDK_BUTTON_RELEASE_MASK);
     }
     gtk_widget_show_all(window);
 }
