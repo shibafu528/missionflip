@@ -4,24 +4,8 @@ GList *filelist = NULL;
 GdkPixbuf *current;
 GtkWidget *window;
 
-void search_images(GList **list, gchar *dirname) {
-    GDir *dir;
-    dir = g_dir_open(dirname, 0, NULL);
-    if (dir) {
-        const gchar *name;
-        while (name = g_dir_read_name(dir)) {
-            gchar *path;
-            path = g_build_filename(dirname, name, NULL);
-            if (g_file_test(path, G_FILE_TEST_IS_DIR)) {
-                search_images(list, path);
-            }
-            else {
-                *list = g_list_append(*list, path);
-            }
-        }
-        g_dir_close(dir);
-    }
-}
+void search_images(GList **list, gchar *dirname);
+gboolean pick_multi_dir_files(GtkWindow *parent, GList **list);
 
 static void set_window_title() {
     GList *f;
@@ -99,25 +83,8 @@ static void cb_clicked(GtkWidget *widget, GdkEventButton *event, gpointer data) 
     switch (event->button) {
     case 1: /* Left Click */
         if (filelist == NULL) {
-            GtkWidget *dialog;
-            gint response;
-            dialog = gtk_file_chooser_dialog_new("Open an image",
-                                                 GTK_WINDOW(window),
-                                                 GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER,
-                                                 GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-                                                 GTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT,
-                                                 NULL);
-        
-            response = gtk_dialog_run(GTK_DIALOG(dialog));
-            if (response == GTK_RESPONSE_ACCEPT) {
-                gchar *dirname;
-                dirname = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-                search_images(&filelist, dirname);
-                filelist = g_list_last(filelist);
-                next_image(GTK_WIDGET(data));
-                g_free(dirname);
-            }
-            gtk_widget_destroy(dialog);
+            int response;
+            response = pick_multi_dir_files(GTK_WINDOW(window), &filelist);
         }
         else {
             next_image(widget);
